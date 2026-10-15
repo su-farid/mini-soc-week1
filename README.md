@@ -52,7 +52,7 @@ I caused five events on purpose and found each one in the dashboard (Threat Hunt
 | 1 | Failed SSH login | ubuntu-web | sshd: Attempt to login using a non-existent user (rule 5710) | 5 | `evidence/07-event1-ssh.png` |
 | 2 | Command run with sudo | ubuntu-web | Successful sudo to ROOT executed. (rule 5402) | 3 | `evidence/08-event2-sudo.png` |
 | 3 | New local user created | ubuntu-web | New user added to the system. (rule 5902) | 8 | `evidence/09-event3-adduser.png` |
-| 4 | Program started on Windows (Sysmon) | win-client | TODO | TODO | `evidence/10-event4-sysmon.png` |
+| 4 | Program started on Windows (Sysmon) | win-client | Discovery activity executed | 3 | `evidence/10-event4-sysmon.png` |
 | 5 | Failed Windows logon | win-client | Logon Failure - Unknown user or bad password (rule 60122) | 5 | `evidence/11-event5-winlogon.png` |
 
 ## Event path (V2)
@@ -80,7 +80,6 @@ Measured with `docker stats --no-stream` while the lab was idle (no events being
 | wazuh.manager | 407.4 MiB | 10.53% | 1.05% |
 | wazuh.dashboard | 207.9 MiB | 5.37% | 0.30% |
 
-<!-- TODO: siem-host showed a 3.777 GiB limit. Raise the VM to 16 GB, re-measure, update this table and replace evidence/12-docker-stats.png -->
 
 ![docker stats](evidence/12-docker-stats.png)
 
@@ -94,4 +93,4 @@ This screenshot proves the idle memory values in the table.
 
 ## Notes
 
-- Windows evaluation image expires on: **TODO (run `slmgr /dlv` on win-client)**
+- Windows evaluation image expires on: 89 days
