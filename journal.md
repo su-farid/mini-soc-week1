@@ -1,59 +1,66 @@
 # Journal: Week 1
 
-## 2026-10-?? Invalid YAML in netplan
+This journal records troubleshooting from the lab build. Where the original notes did not include a date, no date has been invented.
 
-**What I tried:** Gave siem-host a static IP on the new host-only adapter by editing `/etc/netplan/50-cloud-init.yaml`.
+## Date not recorded — Invalid YAML in netplan
+**What I tried:** Set a static IP on the siem-host host-only adapter by editing `/etc/netplan/50-cloud-init.yaml`.
 **What failed:** `netplan apply` returned `Invalid YAML: inconsistent indentation`.
-**What fixed it:** `ens33` and `ens37` were indented differently. YAML needs every key at the same level to start in the same column, and tabs are not allowed. I aligned them and tested with `netplan try`. I also learned the adapter names are `ens33`/`ens37` on VMware, not `enp0s3`.
+**What fixed it:** Aligned the `ens33` and `ens37` keys and tested with `netplan try`. VMware used `ens33`/`ens37`, not `enp0s3`.
 
-## 2026-10-?? The Dell could not open the dashboard
+## Date not recorded — Dell could not open the dashboard
+**What I tried:** Opened `https://192.168.56.10` from the Dell.
+**What failed:** The Dell had two host-only adapters on the same subnet, and VMware VMnet4 had a 169.254.x.x address.
+**What fixed it:** Disabled the conflicting VirtualBox host-only adapter and assigned VMnet4 `192.168.56.1/24` with no gateway. Ping and dashboard access then worked.
 
-**What I tried:** Opened `https://192.168.56.10` from the Dell. It worked inside win-client but not on the Dell.
-**What failed:** The Dell had two host-only adapters on 192.168.56.x (VirtualBox and VMware), and the VMware VMnet4 adapter only had a 169.254.x.x address.
-**What fixed it:** I disabled the VirtualBox host-only adapter and gave the VMnet4 adapter 192.168.56.1/24 with no gateway. Then ping and the dashboard worked from the Dell.
+## Date not recorded — Docker permission denied
+**What I tried:** Ran the certificate-generator Compose command.
+**What failed:** Permission was denied for `/var/run/docker.sock`.
+**What fixed it:** Added my account to the `docker` group and logged in again. Note: membership in this group grants root-equivalent privileges.
 
-## 2026-10-?? Docker permission denied
+## Date not recorded — Wrong agent package architecture
+**What I tried:** Installed the Linux agent using the command from the dashboard.
+**What failed:** The package was ARM64 but the system was AMD64.
+**What fixed it:** Selected the AMD64 package matching Wazuh version 4.14.7.
 
-**What I tried:** Ran `docker compose -f generate-indexer-certs.yml run --rm generator`.
-**What failed:** `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`.
-**What fixed it:** My user was not in the `docker` group. `sudo usermod -aG docker $USER` and a new login fixed it.
-
-## 2026-10-?? Wrong agent package architecture
-
-**What I tried:** Installed the Linux agent with the command from the dashboard.
-**What failed:** `package architecture (arm64) does not match system (amd64)`.
-**What fixed it:** I had picked ARM64 in the Deploy new agent form. I downloaded the amd64 package of the same version (4.14.7) and installed that.
-
-## 2026-10-14 Duplicate agent name after restarting the stack
-
+## 2026-10-14 — Duplicate agent name
 **What I tried:** Restarted the stack while changing the admin password.
-**What failed:** ubuntu-web showed disconnected. `ossec.log` said `Duplicate agent name: ubuntu-web` and `Unable to connect to any server`.
-**What fixed it:** I removed the old registration on the manager with `manage_agents -r <id>`, deleted `/var/ossec/etc/client.keys` on the agent and started it again so it enrolled with a new key.
+**What failed:** `ubuntu-web` disconnected and `ossec.log` reported a duplicate agent name.
+**What fixed it:** Removed the stale registration, removed the old agent key on the endpoint, and enrolled it again.
 
-## 2026-10-14 ubuntu-web lost its host-only IP
+## 2026-10-14 — ubuntu-web lost its host-only IP
+**What I tried:** Connected from the Dell to `192.168.56.20`.
+**What failed:** SSH timed out; `ens33` had no address while `ens37` had a NAT DHCP address.
+**What fixed it:** Created a NetworkManager profile with a static address and brought it up.
 
-**What I tried:** SSH from the Dell to ubuntu-web (192.168.56.20).
-**What failed:** Connection timed out. `ip a` showed `ens33` had no address and `ens37` (NAT) had a DHCP address. Ubuntu Desktop uses NetworkManager, so a netplan file did not help.
-**What fixed it:** I created a NetworkManager profile with a static address using `nmcli con add ... ipv4.method manual ipv4.addresses 192.168.56.20/24` and brought it up.
+## 2026-10-14 — SSH and sudo events did not reach Wazuh
+**What I tried:** Ran `sudo ls /root` and generated failed SSH logins.
+**What failed:** The agent was Active, but the auth log was not being collected.
+**What fixed it:** Added a `<localfile>` entry for `/var/log/auth.log` in the agent configuration and restarted the agent using systemd.
 
-## 2026-10-14 SSH and sudo events never reached the dashboard
+## 2026-10-14 — Agent stopped after a manual restart
+**What I tried:** Restarted the agent with `wazuh-control restart`.
+**What failed:** The service became inactive and the dashboard showed it disconnected.
+**What fixed it:** Started the service with `sudo systemctl start wazuh-agent`.
 
-**What I tried:** Ran `sudo ls /root` and failed SSH logins and looked for them in Wazuh.
-**What failed:** The agent was Active but nothing arrived. `ossec.log` showed the logcollector analysing `dpkg.log` and the journal, but not `/var/log/auth.log`.
-**What fixed it:** I added a `<localfile>` block (`log_format` syslog, location `/var/log/auth.log`) to the agent's `ossec.conf` and restarted the agent. The log then showed `Analyzing file: '/var/log/auth.log'`.
+## 2026-10-14 — Alerts exist in alerts.json but dashboard is empty
+**Status: OPEN — the fix has not yet been verified.**
 
-## 2026-10-14 Agent stopped after I restarted it by hand
+**Observed:** A sudo alert (rule 5402, agent 004) existed in `/var/ossec/logs/alerts/alerts.json`, but `filebeat test output` returned `401 Unauthorized`.
 
-**What I tried:** Restarted the agent with `wazuh-control restart` after editing `ossec.conf`.
-**What failed:** The agent went `inactive (dead)` and the dashboard showed disconnected. systemd did not know about the restart.
-**What fixed it:** Starting it with `sudo systemctl start wazuh-agent`. Now I always use `systemctl` for the agent service.
-
-## 2026-10-14 Alerts in alerts.json but empty dashboard
-
-**What I tried:** Checked each step of the path. The sudo alert (rule 5402, agent 004) was in `/var/ossec/logs/alerts/alerts.json` on the manager.
-**What failed:** `filebeat test output` returned `401 Unauthorized`. The manager still used the old indexer password after I changed it.
-**What fixed it:** TODO (fill in after the fix: update `INDEXER_PASSWORD` for the manager in `docker-compose.yml`, recreate the manager container, check `filebeat test output` again).
+**Next steps:**
+1. Follow the official Wazuh 4.14 Docker password-change procedure and identify the correct Filebeat-to-indexer credential setting for this deployment. Do not assume the dashboard administrator password is also the internal service password.
+2. Back up configuration securely; do not commit private values.
+3. Apply the documented update and restart/recreate only the required service, preserving volumes. Never use `docker compose down -v`.
+4. Re-run `filebeat test output` and confirm success.
+5. Confirm a recent alert appears in the dashboard, save redacted evidence, and replace this note with the commands actually used and observed result.
 
 ## Persistence test (W4)
+**Status: NOT YET VERIFIED. Do not claim this requirement is complete until tested.**
 
-TODO: write what I did (`docker compose stop` / `start`, reboot of siem-host) and what I observed (agents still enrolled? old alerts still visible?).
+1. Record current agent status and identify an existing alert in the dashboard.
+2. From the Compose directory, run `docker compose stop`, then `docker compose start`; wait for services to become healthy.
+3. Confirm all three containers are running, both agents return to Active, and the existing alert is still searchable.
+4. Reboot `siem-host` and repeat those checks.
+5. Save command output/screenshots under `evidence/` and record the actual results here.
+
+Do not mark W4 passed unless both the stack restart and host reboot checks pass.
