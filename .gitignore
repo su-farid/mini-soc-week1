@@ -1,11 +1,32 @@
+# Environment files and secrets
 .env
+.env.*
+!.env.example
 *.pem
 *.key
 *.crt
+*.cer
 *.p12
-certs/
+*.pfx
+*.jks
+*.keystore
 secrets/
+certs/
+*credentials*
+*secret*
+
+# Local Wazuh deployment and generated state
 wazuh-docker/
+*.log
+
+# VM images and snapshots (keep large/private lab artifacts out of Git)
 *.ova
+*.ovf
 *.vdi
 *.vmdk
+*.vhd
+*.vhdx
+*.qcow2
+*.vmem
+*.vmsn
+*.nvram
