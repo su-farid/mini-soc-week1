@@ -1,4 +1,4 @@
-# Environment files and secrets
+# Environment files and private configuration
 .env
 .env.*
 !.env.example
@@ -15,11 +15,11 @@ certs/
 *credentials*
 *secret*
 
-# Local Wazuh deployment and generated state
+# Local Wazuh deployment and generated logs
 wazuh-docker/
 *.log
 
-# VM images and snapshots (keep large/private lab artifacts out of Git)
+# VM images and snapshots: keep large/private lab artifacts out of Git
 *.ova
 *.ovf
 *.vdi
