@@ -1,96 +1,116 @@
-# Mini-SOC in a box: Week 1
+# Mini-SOC in a Box — Week 1
 
-Week 1 of a 12-week Blue Team capstone. LabShop is a small online shop with one web server and one staff PC and no security monitoring. My job this week: build an isolated lab and deploy Wazuh so I can see what the machines are doing.
+Week 1 of a 12-week Blue Team capstone. The goal is to build an isolated virtual lab, deploy Wazuh, enrol Linux and Windows agents, and verify that endpoint events can be investigated from the dashboard.
 
-## Overview
+## Lab overview
 
-- **Platform:** Wazuh **4.14.7** (single-node, Docker Compose) on `siem-host`
-- **Agents:** `ubuntu-web` (Linux, nginx) and `win-client` (Windows 10 + Sysmon)
-- **Hypervisor:** VMware Workstation, host-only network VMnet4 (192.168.56.0/24)
-- **Diagram and address table:** see [`architecture/`](architecture/)
-- **Evidence (screenshots):** see [`evidence/`](evidence/)
-- **Journal:** see [`journal.md`](journal.md)
+- **Wazuh version recorded during setup:** 4.14.7 (single-node Docker Compose)
+- **Hypervisor:** VMware Workstation
+- **Host-only network:** VMnet4, `192.168.56.0/24`
+- **VM addresses:** `siem-host` — `192.168.56.10`; `ubuntu-web` — `192.168.56.20`; `win-client` — `192.168.56.30`
+- **Architecture/address table:** [architecture/addresses.md](architecture/addresses.md)
+- **Evidence:** [evidence/](evidence/)
+- **Build journal:** [journal.md](journal.md)
 
-## Start the lab (in this order)
+> **Current status:** The repository contains screenshots and notes for the initial build, agent setup, and five verification events. The journal records a Filebeat-to-indexer `401 Unauthorized` problem. Until that is resolved and re-tested, do not treat dashboard ingestion as currently healthy. The Week 1 persistence test (W4) is also not yet documented as passed.
 
-1. Power on **siem-host** and log in.
-2. Start the Wazuh stack:
-   ```
-   cd ~/wazuh-docker/single-node
+## Start the lab
+
+1. Power on `siem-host` and log in.
+2. In the Wazuh Compose directory, run:
+   ```bash
    docker compose start
-   docker compose ps          # all 3 containers must show Up
+   docker compose ps
    ```
-3. Wait 2-3 minutes, then open `https://192.168.56.10` from the Dell and log in as `admin`.
-4. Power on **ubuntu-web**.
-5. Power on **win-client**.
-6. In the dashboard open Agents: both agents must be **Active**.
+3. Confirm all three Wazuh containers are running. If they are not, inspect `docker compose logs --tail=100` before proceeding.
+4. Open `https://192.168.56.10` from the host computer. A browser certificate warning can be expected for a lab/self-signed certificate; verify that you are connecting to your own lab IP before proceeding. Do not disable certificate validation globally.
+5. Start `ubuntu-web` and `win-client`.
+6. Check Agents in the dashboard and confirm both agents show Active.
+7. Generate a test event and verify that it is searchable in the dashboard. If events exist in `alerts.json` but not in the dashboard, follow the open issue in [journal.md](journal.md).
 
-## Stop the lab (reverse order)
+## Stop the lab
 
-1. Shut down **win-client**.
-2. Shut down **ubuntu-web**: `sudo shutdown now`
-3. On siem-host: `docker compose stop`
-4. Shut down **siem-host**: `sudo shutdown now`
+1. Shut down `win-client`.
+2. Shut down `ubuntu-web`.
+3. On `siem-host`, from the Compose directory, run:
+   ```bash
+   docker compose stop
+   ```
+4. Shut down `siem-host`.
 
-Never run `docker compose down -v`: `-v` deletes the volumes and with them all alerts and agent data.
+**Do not run `docker compose down -v`.** Removing volumes can delete persisted index and alert data. Keep secrets out of shell history, screenshots, and Git.
 
-## Wazuh platform (W1)
+## Wazuh platform (W1–W5)
 
-- Version: **Wazuh 4.14.7**, checked with the image tags (`wazuh/wazuh-manager:4.14.7`, `wazuh-indexer:4.14.7`, `wazuh-dashboard:4.14.7`)
-- Containers: `wazuh.manager`, `wazuh.indexer`, `wazuh.dashboard`, all Up
+The build notes identify Wazuh image tags as 4.14.7 and show a screenshot of the Compose container list. Re-check the live deployment before claiming it is healthy:
 
-![docker compose ps](evidence/03-docker-compose-ps.png)
+```bash
+docker compose ps
+docker compose images
+docker stats --no-stream
+```
 
-This screenshot proves all three containers run and shows the 4.14.7 image tags.
+Record the actual image tags and idle memory values from the current run. The existing values below are historical measurements from the repository, not a guarantee of the current run.
 
-## Verification events (V1)
+| Container | Previously recorded memory | Previously recorded memory limit % | Previously recorded CPU |
+|---|---:|---:|---:|
+| `wazuh.indexer` | 1.355 GiB | 35.88% | 1.18% |
+| `wazuh.manager` | 407.4 MiB | 10.53% | 1.05% |
+| `wazuh.dashboard` | 207.9 MiB | 5.37% | 0.30% |
 
-I caused five events on purpose and found each one in the dashboard (Threat Hunting > Events).
+Evidence: [container list](evidence/03-docker-compose-ps.png), [memory stats](evidence/12-docker-stats.png), [HTTPS dashboard](evidence/04-dashboard-https.png).
 
-| # | Event | Agent | Rule description | Level | Screenshot |
-|---|---|---|---|---|---|
-| 1 | Failed SSH login | ubuntu-web | sshd: Attempt to login using a non-existent user (rule 5710) | 5 | `evidence/07-event1-ssh.png` |
-| 2 | Command run with sudo | ubuntu-web | Successful sudo to ROOT executed. (rule 5402) | 3 | `evidence/08-event2-sudo.png` |
-| 3 | New local user created | ubuntu-web | New user added to the system. (rule 5902) | 8 | `evidence/09-event3-adduser.png` |
-| 4 | Program started on Windows (Sysmon) | win-client | Discovery activity executed | 3 | `evidence/10-event4-sysmon.png` |
-| 5 | Failed Windows logon | win-client | Logon Failure - Unknown user or bad password (rule 60122) | 5 | `evidence/11-event5-winlogon.png` |
+The browser certificate warning is expected if the deployment uses a self-signed or otherwise locally untrusted certificate. Confirm the certificate details and lab IP; do not claim the certificate is publicly trusted.
 
-## Event path (V2)
+## Agents and verification events
 
-Example: `sudo ls /root` on ubuntu-web.
+The repository includes screenshots named for the following events. Re-open them and confirm the agent, rule description, and rule level are legible before submission.
 
-1. Linux writes the sudo command to `/var/log/auth.log`.
-2. The Wazuh agent (logcollector module) reads the new line. This needs a `<localfile>` entry for `auth.log` in the agent's `ossec.conf`.
-3. The agent sends the line, encrypted, to the manager on TCP 1514. Port 1515 is only used when the agent enrolls.
-4. The manager decodes the line and matches it against its rules. Here it matches rule 5402, level 3.
-5. The manager writes the alert to `alerts.json`.
-6. Filebeat (inside the manager container) ships the alert to the indexer over HTTPS on port 9200.
-7. The indexer stores the alert in the `wazuh-alerts-*` index.
-8. The dashboard queries the indexer and shows the alert in the Events view.
+| # | Event | Agent | Recorded rule description | Recorded level | Evidence |
+|---|---|---|---|---:|---|
+| 1 | Failed SSH login | `ubuntu-web` | sshd: Attempt to login using a non-existent user (rule 5710) | 5 | [screenshot](evidence/07-event1-ssh.png) |
+| 2 | Command run with sudo | `ubuntu-web` | Successful sudo to ROOT executed (rule 5402) | 3 | [screenshot](evidence/08-event2-sudo.png) |
+| 3 | New local Linux user | `ubuntu-web` | New user added to the system (rule 5902) | 8 | [screenshot](evidence/09-event3-adduser.png) |
+| 4 | Windows program start via Sysmon | `win-client` | Discovery activity executed | 3 | [screenshot](evidence/10-event4-sysmon.png) |
+| 5 | Failed Windows logon | `win-client` | Logon Failure — Unknown user or bad password (rule 60122) | 5 | [screenshot](evidence/11-event5-winlogon.png) |
 
-Debugging note: after I changed the admin password, agents were Active and alerts were written to `alerts.json`, but the dashboard stayed empty. `filebeat test output` returned `401 Unauthorized`, which placed the break between step 5 and step 7: the manager was still using the old indexer password.
+## Event path example (V2)
 
-## Idle memory use (W5)
+Example event: `sudo ls /root` on `ubuntu-web`.
 
-Measured with `docker stats --no-stream` while the lab was idle (no events being generated, agents connected).
+1. Linux records the authentication/sudo event in its authentication log.
+2. The Wazuh agent's logcollector reads the configured log file.
+3. The agent sends the event to the manager over the configured agent connection (normally TCP 1514).
+4. The manager decodes the event and evaluates Wazuh rules.
+5. The manager writes matching alerts to `alerts.json`.
+6. Filebeat forwards alerts to the indexer.
+7. The indexer stores the alert in the Wazuh alerts index.
+8. The dashboard queries the indexer and presents the event.
 
-| Container | Memory usage | % of limit | CPU |
-|---|---|---|---|
-| wazuh.indexer | 1.355 GiB | 35.88% | 1.18% |
-| wazuh.manager | 407.4 MiB | 10.53% | 1.05% |
-| wazuh.dashboard | 207.9 MiB | 5.37% | 0.30% |
+The journal records that this pipeline previously failed at the Filebeat-to-indexer step with `401 Unauthorized`. The root cause and fix must be verified using the actual deployment configuration and official Wazuh 4.14 documentation; do not assume the dashboard admin password is interchangeable with internal service credentials.
 
+## Network isolation and security
 
-![docker stats](evidence/12-docker-stats.png)
+- The intended design is a host-only lab network for all three VMs.
+- Only `siem-host` should retain a permanent NAT adapter. Remove temporary NAT from both endpoints after software installation.
+- Verify the adapter configuration in VMware and confirm endpoints do not have a permanent Internet route.
+- `.gitignore` helps prevent accidental additions but does not remove files already tracked or prove that the Git history is free of secrets. Review tracked files and repository history before submission.
+- Keep passwords, private keys, certificates, tokens, and internal service credentials out of the repository.
 
-This screenshot proves the idle memory values in the table.
+## VM resources — verify against the assignment
 
-## Security notes
+The current [address table](architecture/addresses.md) records these configured resources: `siem-host` 16 GB RAM / 2 vCPU / 200 GB disk; `ubuntu-web` 4 GB / 4 vCPU / 30 GB; `win-client` 4 GB / 2 vCPU / 60 GB. These values differ from the Week 1 brief's target table. Confirm the real VM settings and either change the VMs to match the brief or document the deviation with the instructor; do not silently represent them as compliant.
 
-- No password, key or certificate is stored in this repository. `.gitignore` excludes `.env`, `*.pem`, `*.key`, `*.crt`, `certs/`, `secrets/` and the `wazuh-docker/` folder.
-- The default Wazuh admin password was changed. The new password is kept in a password manager only.
-- Only `siem-host` has a permanent NAT adapter. The endpoints get NAT only while installing software, then it is removed.
+## Persistence test (W4) — pending
 
-## Notes
+Do not mark this requirement passed until the actual lab has been tested.
 
-- Windows evaluation image expires on: 89 days
+1. Record the status of both agents and identify an existing alert.
+2. Run `docker compose stop`, then `docker compose start`; wait for the stack to become healthy.
+3. Confirm all containers are running, both agents return to Active, and the old alert remains searchable.
+4. Reboot `siem-host` and repeat the checks.
+5. Add actual results and screenshots to [journal.md](journal.md) and [evidence/](evidence/).
+
+## Windows evaluation expiry
+
+The previous note says “89 days” but does not specify the start date. Check the actual Windows evaluation expiry on `win-client` and record the exact date. Do not treat a remaining-day count as a calendar expiry date.
